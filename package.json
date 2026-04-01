@@ -1,0 +1,46 @@
+{
+  "name": "clawmuse",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "out/main/index.js",
+  "description": "Avatar runtime shell for OpenClaw companion experiences",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@10.17.1",
+  "scripts": {
+    "dev": "echo \"Use pnpm dev:desktop-electron or pnpm demo:headless\"",
+    "dev:desktop-electron": "electron-vite dev --config apps/desktop-electron/electron.vite.config.ts",
+    "build:desktop-electron": "electron-vite build --config apps/desktop-electron/electron.vite.config.ts",
+    "demo:headless": "tsx apps/desktop-shell/src/headless-main.ts",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "electron": "40.8.0",
+    "electron-vite": "^4.0.0",
+    "jsdom": "^29.0.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "^4.0.18",
+    "vue": "^3.5.22"
+  },
+  "dependencies": {
+    "@pixi/app": "^6.5.10",
+    "@pixi/constants": "6.5.10",
+    "@pixi/core": "6.5.10",
+    "@pixi/display": "6.5.10",
+    "@pixi/extensions": "^6.5.10",
+    "@pixi/loaders": "6.5.10",
+    "@pixi/math": "6.5.10",
+    "@pixi/runner": "6.5.10",
+    "@pixi/settings": "6.5.10",
+    "@pixi/sprite": "6.5.10",
+    "@pixi/ticker": "^6.5.10",
+    "@pixi/utils": "6.5.10",
+    "pixi-live2d-display": "^0.4.0"
+  }
+}
