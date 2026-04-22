@@ -17,6 +17,7 @@ export interface Live2DFocusPoint {
 export interface Live2DModelController {
   loadModel(input: Live2DLoadModelInput): Promise<void> | void
   setEmotion(input: Pick<AvatarEmotionInput, 'emotion' | 'intensity'>): Promise<void> | void
+  setExpression?(name?: string): Promise<void> | void
   playMotion(input: Pick<AvatarMotionInput, 'motion' | 'priority' | 'durationMs'>): Promise<void> | void
   setMouthOpen(value: number): Promise<void> | void
   setFocusAt(point: Live2DFocusPoint): Promise<void> | void

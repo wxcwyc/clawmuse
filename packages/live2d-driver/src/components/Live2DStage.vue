@@ -29,6 +29,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   modelBoundsChange: [bounds: { width: number, height: number }]
+  modelDebug: [line: string]
 }>()
 
 const modelRef = ref<InstanceType<typeof Live2DModel>>()
@@ -38,7 +39,12 @@ const controller: Live2DModelController = {
   async loadModel(input) {
     await modelRef.value?.loadModel(input)
   },
-  async setEmotion() {},
+  async setEmotion(input) {
+    await modelRef.value?.setEmotion(input)
+  },
+  async setExpression(name) {
+    await modelRef.value?.setExpression(name)
+  },
   async playMotion(input) {
     await modelRef.value?.playMotion(input)
   },
@@ -145,6 +151,7 @@ onUnmounted(() => {
         :model-source="modelSource"
         :model-id="modelId"
         @bounds-change="emit('modelBoundsChange', $event)"
+        @debug="emit('modelDebug', $event)"
       />
     </Live2DCanvas>
     <div class="clawmuse-live2d-stage__overlay">

@@ -1,4 +1,5 @@
 import { resolveLive2DModelSource } from '../../../../packages/live2d-driver/src/asset-resolver'
+import { resolveCubismRuntimeScriptSrc } from './cubism-runtime'
 
 export interface InspectLive2DStageOptions {
   modelSource: string
@@ -12,7 +13,7 @@ export async function inspectLive2DStage(options: InspectLive2DStageOptions) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
 
   if (!hasCubismCore()) {
-    warnings.push('[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js')
+    warnings.push(`[stage] missing Live2D Cubism Core at ${resolveCubismRuntimeScriptSrc()}`)
   }
 
   if (!options.modelSource.startsWith('assets://')) {
@@ -20,6 +21,14 @@ export async function inspectLive2DStage(options: InspectLive2DStageOptions) {
   }
 
   const resolvedModelSource = resolveLive2DModelSource(options.modelSource)
+
+  // file:// packaged runtime can produce false negatives for HEAD probes.
+  if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+    return warnings
+  }
+  if (resolvedModelSource.startsWith('file:')) {
+    return warnings
+  }
 
   if (!fetchImpl) {
     warnings.push(`[stage] missing Live2D model asset at ${resolvedModelSource}`)

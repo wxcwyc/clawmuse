@@ -271,4 +271,73 @@ describe('OpenClawChatEventNormalizer', () => {
       },
     ])
   })
+
+  it('extracts emotion/action hints from gateway metadata for downstream avatar control', () => {
+    const normalizer = new OpenClawChatEventNormalizer()
+
+    const delta = normalizer.normalize({
+      runId: 'run-hints-1',
+      sessionKey: 'main',
+      seq: 1,
+      state: 'delta',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: '你好呀。' }],
+        emotion: 'happy',
+        emotionIntensity: 0.82,
+        emotionReason: 'server-tag',
+        action: {
+          motion: 'warm-wave',
+          priority: 2,
+          durationMs: 1500,
+        },
+        timestamp: 111,
+      },
+    })
+
+    expect(delta).toEqual([
+      {
+        type: 'assistant.delta',
+        sessionKey: 'main',
+        runId: 'run-hints-1',
+        text: '你好呀。',
+        accumulatedText: '你好呀。',
+        emotion: 'happy',
+        emotionIntensity: 0.82,
+        emotionReason: 'server-tag',
+        action: 'warm-wave',
+        actionPriority: 2,
+        actionDurationMs: 1500,
+        ts: 111,
+      },
+    ])
+
+    const completed = normalizer.normalize({
+      runId: 'run-hints-1',
+      sessionKey: 'main',
+      seq: 2,
+      state: 'final',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: '你好呀。' }],
+        timestamp: 112,
+      },
+    })
+
+    expect(completed).toEqual([
+      {
+        type: 'assistant.completed',
+        sessionKey: 'main',
+        runId: 'run-hints-1',
+        finalText: '你好呀。',
+        emotion: 'happy',
+        emotionIntensity: 0.82,
+        emotionReason: 'server-tag',
+        action: 'warm-wave',
+        actionPriority: 2,
+        actionDurationMs: 1500,
+        ts: 112,
+      },
+    ])
+  })
 })

@@ -12,7 +12,7 @@ describe('ensureCubismRuntimeScript', () => {
 
   it('appends the cubism runtime script when it is missing', async () => {
     const promise = ensureCubismRuntimeScript()
-    const script = document.querySelector('script[src="/live2d-core/live2dcubismcore.min.js"]') as HTMLScriptElement | null
+    const script = document.querySelector('script[src="./live2d-core/live2dcubismcore.min.js"]') as HTMLScriptElement | null
 
     expect(script).toBeTruthy()
 
@@ -23,7 +23,7 @@ describe('ensureCubismRuntimeScript', () => {
 
   it('reuses the existing script tag instead of appending duplicates', async () => {
     const existing = document.createElement('script')
-    existing.src = '/live2d-core/live2dcubismcore.min.js'
+    existing.src = './live2d-core/live2dcubismcore.min.js'
     document.head.appendChild(existing)
 
     const promise = ensureCubismRuntimeScript()
@@ -31,6 +31,6 @@ describe('ensureCubismRuntimeScript', () => {
     existing.dispatchEvent(new Event('load'))
 
     await expect(promise).resolves.toBe(true)
-    expect(document.querySelectorAll('script[src="/live2d-core/live2dcubismcore.min.js"]')).toHaveLength(1)
+    expect(document.querySelectorAll('script[src="./live2d-core/live2dcubismcore.min.js"]')).toHaveLength(1)
   })
 })

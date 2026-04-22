@@ -1,6 +1,10 @@
 # ClawMuse
 
-ClawMuse is a desktop avatar runtime that turns OpenClaw replies into:
+ClawMuse is a desktop avatar runtime that turns OpenClaw replies into a
+speaking, animated character experience.
+
+It sits between an agent/chat backend and an avatar presentation layer, handling
+the presentation loop that makes text feel alive:
 
 - subtitles
 - voice playback
@@ -8,14 +12,13 @@ ClawMuse is a desktop avatar runtime that turns OpenClaw replies into:
 - expressions
 - motions
 
-In one sentence: **ClawMuse is the shell that makes OpenClaw feel like a speaking, animated desktop character.**
+In one sentence: **ClawMuse is the shell that makes OpenClaw feel like a
+desktop character instead of a text console.**
 
 ## What it is
 
-ClawMuse sits between an agent/chat backend and an avatar presentation layer.
-
 OpenClaw remains the conversation brain and session system. ClawMuse handles the
-presentation loop:
+desktop-side runtime:
 
 1. receive streaming reply text
 2. render subtitles immediately
@@ -25,6 +28,19 @@ presentation loop:
 
 The first target is a Live2D-first desktop experience for AI companion
 scenarios. VRM remains a later expansion path.
+
+## Why this project exists
+
+OpenClaw can already generate replies. ClawMuse exists to handle the layer that
+OpenClaw does not try to own well:
+
+- real-time subtitle presentation
+- voice playback and speech timing
+- Live2D avatar rendering
+- expression / motion orchestration
+- desktop-facing runtime integration
+
+The goal is to make an agent feel present, not just correct.
 
 ## Scope
 
@@ -75,17 +91,23 @@ Current constraints:
 
 This repository is open-sourced under the MIT License for **ClawMuse code**.
 
-However, some runtimes and assets mentioned by the project are **not** covered by
-that MIT license and are **not shipped by default** in the public repo:
+Some bundled third-party runtime/model files are included so the project can run
+and be evaluated more easily, but they are **not** covered by this repository's
+MIT license:
 
 - Live2D Cubism Core runtime files
 - Live2D model assets
+
+Other optional third-party bundles are **not** shipped by default in the public
+repo:
+
 - Open-LLM-VTuber source bundles
 - CosyVoice source bundles
 - offline ASR model archives
 - offline Python runtimes / wheelhouses
 
-Read `THIRD_PARTY_NOTICES.md` before redistributing any of those.
+Read `THIRD_PARTY_NOTICES.md` before redistributing any third-party runtime,
+model, or bundled backend component.
 
 ## Local development
 

@@ -76,15 +76,49 @@ describe('desktop-electron renderer bootstrap', () => {
     })
   })
 
-  it('uses the default websocket transport when no custom transport factory is provided', async () => {
-    type Listener = (event: unknown) => void
-    class FakeWebSocket {
-      readyState = 1
-      private readonly listeners = new Map<string, Set<Listener>>()
+  it('uses the node websocket bridge transport when no custom transport factory is provided', async () => {
+    type BridgeEvent = {
+      socketId: number
+      type: 'open' | 'message' | 'close' | 'error'
+      data?: string
+      code?: number
+      reason?: string
+      message?: string
+    }
 
-      constructor() {
+    let lastConnectFrame:
+      | {
+          id?: string
+          method?: string
+          params?: {
+            client?: {
+              id?: string
+              mode?: string
+            }
+          }
+        }
+      | null = null
+    const listeners = new Set<(event: BridgeEvent) => void>()
+    const emitBridgeEvent = (event: BridgeEvent) => {
+      for (const listener of listeners) {
+        listener(event)
+      }
+    }
+
+    const previousWindow = (globalThis as typeof globalThis & { window?: Record<string, unknown> }).window
+    const testWindow = previousWindow ?? {}
+    ;(globalThis as typeof globalThis & { window?: Record<string, unknown> }).window = testWindow
+    const previousBridge = testWindow.clawmuse
+    testWindow.clawmuse = {
+      createNodeWebSocket: vi.fn(async () => {
         queueMicrotask(() => {
-          this.emit('message', {
+          emitBridgeEvent({
+            socketId: 1,
+            type: 'open',
+          })
+          emitBridgeEvent({
+            socketId: 1,
+            type: 'message',
             data: JSON.stringify({
               type: 'event',
               event: 'connect.challenge',
@@ -92,19 +126,25 @@ describe('desktop-electron renderer bootstrap', () => {
             }),
           })
         })
-      }
-
-      addEventListener(type: string, listener: Listener) {
-        const set = this.listeners.get(type) ?? new Set<Listener>()
-        set.add(listener)
-        this.listeners.set(type, set)
-      }
-
-      send(payload: string) {
-        const frame = JSON.parse(payload) as { id?: string, method?: string }
+        return 1
+      }),
+      sendNodeWebSocket: vi.fn(async (_socketId: number, payload: string) => {
+        const frame = JSON.parse(payload) as {
+          id?: string
+          method?: string
+          params?: {
+            client?: {
+              id?: string
+              mode?: string
+            }
+          }
+        }
         if (frame.method === 'connect' && typeof frame.id === 'string') {
+          lastConnectFrame = frame
           queueMicrotask(() => {
-            this.emit('message', {
+            emitBridgeEvent({
+              socketId: 1,
+              type: 'message',
               data: JSON.stringify({
                 type: 'res',
                 id: frame.id,
@@ -117,27 +157,44 @@ describe('desktop-electron renderer bootstrap', () => {
             })
           })
         }
-      }
-
-      close() {}
-
-      private emit(type: string, event: unknown) {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener(event)
+        return true
+      }),
+      closeNodeWebSocket: vi.fn(async () => true),
+      onNodeWebSocketEvent: vi.fn((listener: (event: BridgeEvent) => void) => {
+        listeners.add(listener)
+        return () => {
+          listeners.delete(listener)
         }
-      }
+      }),
     }
-
-    const previousWebSocket = globalThis.WebSocket
-    ;(globalThis as typeof globalThis & { WebSocket: typeof WebSocket }).WebSocket = FakeWebSocket as unknown as typeof WebSocket
 
     try {
       const bootstrap = createDesktopRendererBootstrap()
       await bootstrap.model.connect()
       expect(bootstrap.model.state.logs).toContain('[session] connected')
+      expect(lastConnectFrame?.params?.client?.id).toBe('node-host')
+      expect(lastConnectFrame?.params?.client?.mode).toBe('node')
     }
     finally {
-      ;(globalThis as typeof globalThis & { WebSocket: typeof WebSocket }).WebSocket = previousWebSocket
+      testWindow.clawmuse = previousBridge
+      ;(globalThis as typeof globalThis & { window?: Record<string, unknown> }).window = previousWindow
+    }
+  })
+
+  it('fails fast when the desktop websocket bridge is unavailable', async () => {
+    const previousWindow = (globalThis as typeof globalThis & { window?: Record<string, unknown> }).window
+    const testWindow = previousWindow ?? {}
+    ;(globalThis as typeof globalThis & { window?: Record<string, unknown> }).window = testWindow
+    const previousBridge = testWindow.clawmuse
+    delete testWindow.clawmuse
+    try {
+      const bootstrap = createDesktopRendererBootstrap()
+      await expect(bootstrap.model.connect()).rejects.toThrow('desktop websocket bridge unavailable')
+      expect(bootstrap.model.state.logs).toContain('[session] connect failed: desktop websocket bridge unavailable')
+    }
+    finally {
+      testWindow.clawmuse = previousBridge
+      ;(globalThis as typeof globalThis & { window?: Record<string, unknown> }).window = previousWindow
     }
   })
 })

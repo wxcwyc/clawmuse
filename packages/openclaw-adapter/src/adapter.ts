@@ -3,6 +3,7 @@ import type {
   ClawMuseAssistantCompletedEvent,
   ClawMuseAssistantDeltaEvent,
   ClawMuseAssistantErrorEvent,
+  ClawMuseAssistantHintFields,
   OpenClawChatPayload,
   OpenClawGatewayEventEnvelope,
   OpenClawGatewayTransport,
@@ -31,6 +32,7 @@ export class OpenClawGatewayChatAdapter {
   private readonly normalizer: OpenClawChatEventNormalizer
   private readonly runEventSourceByRun = new Map<string, 'chat' | 'agent'>()
   private readonly fallbackAccumulatedByRun = new Map<string, string>()
+  private readonly fallbackHintsByRun = new Map<string, ClawMuseAssistantHintFields>()
 
   constructor(
     private readonly transport: OpenClawGatewayTransport,
@@ -55,6 +57,7 @@ export class OpenClawGatewayChatAdapter {
       ) {
         this.runEventSourceByRun.delete(event.payload.runId)
         this.fallbackAccumulatedByRun.delete(event.payload.runId)
+        this.fallbackHintsByRun.delete(event.payload.runId)
       }
       return normalized
     }
@@ -139,6 +142,7 @@ export class OpenClawGatewayChatAdapter {
       const previous = this.fallbackAccumulatedByRun.get(runId) ?? ''
       const rawText = typeof data.text === 'string' ? data.text : ''
       const rawDelta = typeof data.delta === 'string' ? data.delta : ''
+      const mergedHints = this.mergeFallbackHints(runId, data)
 
       let nextAccumulated = previous
       if (rawText) {
@@ -169,6 +173,7 @@ export class OpenClawGatewayChatAdapter {
         runId,
         text: deltaText,
         accumulatedText: nextAccumulated,
+        ...mergedHints,
         ts,
       }
       return [event]
@@ -178,13 +183,16 @@ export class OpenClawGatewayChatAdapter {
       const phase = typeof data.phase === 'string' ? data.phase : ''
       if (phase === 'end') {
         const finalText = this.fallbackAccumulatedByRun.get(runId) ?? ''
+        const finalHints = this.fallbackHintsByRun.get(runId) ?? {}
         this.fallbackAccumulatedByRun.delete(runId)
+        this.fallbackHintsByRun.delete(runId)
         this.runEventSourceByRun.delete(runId)
         const event: ClawMuseAssistantCompletedEvent = {
           type: 'assistant.completed',
           sessionKey,
           runId,
           finalText,
+          ...finalHints,
           ts,
         }
         return [event]
@@ -192,6 +200,7 @@ export class OpenClawGatewayChatAdapter {
 
       if (phase === 'error') {
         this.fallbackAccumulatedByRun.delete(runId)
+        this.fallbackHintsByRun.delete(runId)
         this.runEventSourceByRun.delete(runId)
         const error = typeof data.error === 'string'
           ? data.error
@@ -209,5 +218,76 @@ export class OpenClawGatewayChatAdapter {
     }
 
     return []
+  }
+
+  private mergeFallbackHints(runId: string, data: {
+    text?: unknown
+    delta?: unknown
+    phase?: unknown
+    error?: unknown
+    emotion?: unknown
+    emotionIntensity?: unknown
+    intensity?: unknown
+    emotionReason?: unknown
+    reason?: unknown
+    action?: unknown
+    motion?: unknown
+    actionPriority?: unknown
+    priority?: unknown
+    actionDurationMs?: unknown
+    durationMs?: unknown
+  }): ClawMuseAssistantHintFields {
+    const previous = this.fallbackHintsByRun.get(runId) ?? {}
+    const actionObject = data.action && typeof data.action === 'object'
+      ? data.action as { motion?: unknown, priority?: unknown, durationMs?: unknown }
+      : null
+
+    const parseNumber = (value: unknown) => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+      }
+      if (typeof value === 'string' && value.trim()) {
+        const parsed = Number.parseFloat(value)
+        if (Number.isFinite(parsed)) {
+          return parsed
+        }
+      }
+      return undefined
+    }
+
+    const next: ClawMuseAssistantHintFields = {
+      emotion: (
+        (typeof data.emotion === 'string' && data.emotion.trim())
+        || previous.emotion
+      ) as string | undefined,
+      emotionIntensity: parseNumber(data.emotionIntensity ?? data.intensity) ?? previous.emotionIntensity,
+      emotionReason: (
+        (typeof data.emotionReason === 'string' && data.emotionReason.trim())
+        || (typeof data.reason === 'string' && data.reason.trim())
+        || previous.emotionReason
+      ) as string | undefined,
+      action: (
+        (typeof data.action === 'string' && data.action.trim())
+        || (typeof data.motion === 'string' && data.motion.trim())
+        || (typeof actionObject?.motion === 'string' && actionObject.motion.trim())
+        || previous.action
+      ) as string | undefined,
+      actionPriority: parseNumber(data.actionPriority ?? data.priority ?? actionObject?.priority) ?? previous.actionPriority,
+      actionDurationMs: parseNumber(data.actionDurationMs ?? data.durationMs ?? actionObject?.durationMs) ?? previous.actionDurationMs,
+    }
+
+    if (
+      next.emotion
+      || next.emotionIntensity != null
+      || next.emotionReason
+      || next.action
+      || next.actionPriority != null
+      || next.actionDurationMs != null
+    ) {
+      this.fallbackHintsByRun.set(runId, next)
+      return next
+    }
+
+    return {}
   }
 }

@@ -13,8 +13,8 @@ describe('inspectLive2DStage', () => {
     })
 
     expect(warnings).toEqual([
-      '[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js',
-      '[stage] missing Live2D model asset at /live2d/builtin-hiyori/Hiyori.model3.json',
+      '[stage] missing Live2D Cubism Core at ./live2d-core/live2dcubismcore.min.js',
+      '[stage] missing Live2D model asset at ./live2d/builtin-hiyori/Hiyori.model3.json',
     ])
   })
 

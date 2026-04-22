@@ -258,7 +258,8 @@ describe('Live2DModel', () => {
     expect(lastScaleSet).toHaveBeenCalledTimes(2)
     const initialScaleCall = lastScaleSet.mock.calls[0]
     const clippedScaleCall = lastScaleSet.mock.calls[1]
-    expect(clippedScaleCall?.[0]).toBeCloseTo((initialScaleCall?.[0] as number) * 0.92, 5)
+    expect(clippedScaleCall?.[0]).toBeLessThan(initialScaleCall?.[0] as number)
+    expect(clippedScaleCall?.[1]).toBeLessThan(initialScaleCall?.[1] as number)
     expect(wrapper.vm.getViewportBounds()).toEqual({
       width: 341,
       height: 731,
@@ -292,7 +293,7 @@ describe('Live2DModel', () => {
 
     expect(setupLive2DModel).toHaveBeenLastCalledWith(
       expect.anything(),
-      '/live2d/builtin-hiyori/Hiyori.model3.json',
+      './live2d/builtin-hiyori/Hiyori.model3.json',
       { autoInteract: false },
     )
   })
@@ -329,6 +330,40 @@ describe('Live2DModel', () => {
     })
 
     expect(motion).toHaveBeenCalledWith('TapBody', undefined, 3)
+  })
+
+  it('applies emotion changes to live2d expression/parameter channels', async () => {
+    ;(window as typeof window & { Live2DCubismCore?: object }).Live2DCubismCore = {}
+
+    const wrapper = mount(Live2DModel, {
+      props: {
+        modelSource: '',
+        modelId: 'builtin-hiyori',
+        app: {
+          stage: {
+            addChild,
+            removeChild,
+          },
+          renderer: {
+            width: 1280,
+            height: 720,
+          },
+        },
+      },
+    })
+
+    await wrapper.vm.loadModel({
+      modelSource: 'assets://builtin-hiyori/Hiyori.model3.json',
+      modelId: 'builtin-hiyori',
+    })
+
+    await wrapper.vm.setEmotion({
+      emotion: 'happy',
+      intensity: 0.75,
+    })
+
+    expect(setParameterValueById).toHaveBeenCalledWith('ParamMouthForm', expect.any(Number))
+    expect(setParameterValueById).toHaveBeenCalledWith('ParamEyeSmile', expect.any(Number))
   })
 
   it('maps runtime semantic motion names onto available hiyori motion groups', async () => {

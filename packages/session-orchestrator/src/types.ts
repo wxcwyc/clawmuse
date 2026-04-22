@@ -1,4 +1,13 @@
-export interface AssistantDeltaEvent {
+export interface AssistantHintFields {
+  emotion?: string
+  emotionIntensity?: number
+  emotionReason?: string
+  action?: string
+  actionPriority?: number
+  actionDurationMs?: number
+}
+
+interface AssistantDeltaEventBase {
   type: 'assistant.delta'
   sessionKey: string
   runId: string
@@ -6,14 +15,16 @@ export interface AssistantDeltaEvent {
   accumulatedText: string
   ts: number
 }
+export type AssistantDeltaEvent = AssistantDeltaEventBase & AssistantHintFields
 
-export interface AssistantCompletedEvent {
+interface AssistantCompletedEventBase {
   type: 'assistant.completed'
   sessionKey: string
   runId: string
   finalText: string
   ts: number
 }
+export type AssistantCompletedEvent = AssistantCompletedEventBase & AssistantHintFields
 
 export interface AssistantErrorEvent {
   type: 'assistant.error'

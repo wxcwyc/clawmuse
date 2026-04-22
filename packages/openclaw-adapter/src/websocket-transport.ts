@@ -82,6 +82,7 @@ export interface OpenClawGatewayWebSocketTransportOptions {
   url: string
   token?: string
   password?: string
+  disableDeviceIdentity?: boolean
   protocolVersion?: number
   client?: {
     id?: string
@@ -950,6 +951,9 @@ export class OpenClawGatewayWebSocketTransport
     const signedAt = Date.now()
 
     const device = await (async () => {
+      if (this.options.disableDeviceIdentity) {
+        return undefined
+      }
       const identity = await loadOrCreateDeviceIdentity()
       if (!identity) {
         return undefined

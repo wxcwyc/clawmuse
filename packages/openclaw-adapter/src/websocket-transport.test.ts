@@ -201,6 +201,31 @@ describe('OpenClawGatewayWebSocketTransport', () => {
     })
   })
 
+  it('can disable device identity in connect payload', async () => {
+    const socket = new FakeWebSocket()
+    const transport = new OpenClawGatewayWebSocketTransport({
+      url: 'ws://127.0.0.1:6121/ws',
+      disableDeviceIdentity: true,
+      makeWebSocket: () => socket,
+    })
+
+    transport.start()
+    socket.emitOpen()
+    socket.emitMessage({
+      type: 'event',
+      event: 'connect.challenge',
+      payload: { nonce: 'nonce-3' },
+    })
+
+    await waitForSentCount(socket, 1)
+    const connectFrame = JSON.parse(socket.sent[0]) as {
+      params?: {
+        device?: unknown
+      }
+    }
+    expect(connectFrame.params?.device).toBeUndefined()
+  })
+
   it('supports AIRI event-bus handshake and maps chat.send into input:text', async () => {
     const socket = new FakeWebSocket()
     const transport = new OpenClawGatewayWebSocketTransport({

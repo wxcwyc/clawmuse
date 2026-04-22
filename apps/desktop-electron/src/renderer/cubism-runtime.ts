@@ -1,12 +1,18 @@
-const CUBISM_RUNTIME_SRC = '/live2d-core/live2dcubismcore.min.js'
+export const CUBISM_RUNTIME_RELATIVE_PATH = 'live2d-core/live2dcubismcore.min.js'
+
+export function resolveCubismRuntimeScriptSrc() {
+  return `./${CUBISM_RUNTIME_RELATIVE_PATH}`
+}
 
 function matchesCubismRuntimeScript(script: HTMLScriptElement) {
-  if (script.getAttribute('src') === CUBISM_RUNTIME_SRC) {
+  const expectedSrc = resolveCubismRuntimeScriptSrc()
+  if (script.getAttribute('src') === expectedSrc) {
     return true
   }
 
   try {
-    return new URL(script.src).pathname === CUBISM_RUNTIME_SRC
+    const expectedPathSuffix = `/${CUBISM_RUNTIME_RELATIVE_PATH}`
+    return new URL(script.src).pathname.endsWith(expectedPathSuffix)
   }
   catch {
     return false
@@ -36,7 +42,7 @@ export async function ensureCubismRuntimeScript() {
   }
 
   const script = document.createElement('script')
-  script.src = CUBISM_RUNTIME_SRC
+  script.src = resolveCubismRuntimeScriptSrc()
   document.head.appendChild(script)
 
   return waitForScript(script)

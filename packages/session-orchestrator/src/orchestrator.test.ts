@@ -209,4 +209,42 @@ describe('SessionOrchestrator', () => {
     })
     expect(finalOutput).toEqual([])
   })
+
+  it('prefers server-provided emotion/action hints when present on assistant events', () => {
+    const orchestrator = new SessionOrchestrator({ voiceId: 'voice-1' })
+
+    const output = orchestrator.consume({
+      type: 'assistant.delta',
+      sessionKey: 'main',
+      runId: 'run-hints-1',
+      text: '服务端带了情绪和动作。',
+      accumulatedText: '服务端带了情绪和动作。',
+      emotion: 'excited',
+      emotionIntensity: 0.9,
+      emotionReason: 'gateway-hint',
+      action: 'bright-bounce',
+      actionPriority: 3,
+      actionDurationMs: 1400,
+      ts: 100,
+    })
+
+    expect(output[1]).toEqual({
+      type: 'assistant.emotion',
+      sessionKey: 'main',
+      runId: 'run-hints-1',
+      emotion: 'excited',
+      intensity: 0.9,
+      reason: 'gateway-hint',
+      ts: 100,
+    })
+    expect(output[2]).toEqual({
+      type: 'assistant.motion',
+      sessionKey: 'main',
+      runId: 'run-hints-1',
+      motion: 'bright-bounce',
+      priority: 3,
+      durationMs: 1400,
+      ts: 100,
+    })
+  })
 })

@@ -25,7 +25,16 @@ export interface ClawMuseSessionStartedEvent {
   ts: number
 }
 
-export interface ClawMuseAssistantDeltaEvent {
+export interface ClawMuseAssistantHintFields {
+  emotion?: string
+  emotionIntensity?: number
+  emotionReason?: string
+  action?: string
+  actionPriority?: number
+  actionDurationMs?: number
+}
+
+interface ClawMuseAssistantDeltaEventBase {
   type: 'assistant.delta'
   sessionKey: string
   runId: string
@@ -33,14 +42,16 @@ export interface ClawMuseAssistantDeltaEvent {
   accumulatedText: string
   ts: number
 }
+export type ClawMuseAssistantDeltaEvent = ClawMuseAssistantDeltaEventBase & ClawMuseAssistantHintFields
 
-export interface ClawMuseAssistantCompletedEvent {
+interface ClawMuseAssistantCompletedEventBase {
   type: 'assistant.completed'
   sessionKey: string
   runId: string
   finalText: string
   ts: number
 }
+export type ClawMuseAssistantCompletedEvent = ClawMuseAssistantCompletedEventBase & ClawMuseAssistantHintFields
 
 export interface ClawMuseAssistantErrorEvent {
   type: 'assistant.error'

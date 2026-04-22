@@ -53,6 +53,10 @@ export class Live2DDriver implements Live2DDriverContract {
     })
   }
 
+  async setExpression(name?: string): Promise<void> {
+    await this.controller.setExpression?.(name)
+  }
+
   async playMotion(input: AvatarMotionInput): Promise<void> {
     await this.controller.playMotion({
       motion: input.motion,

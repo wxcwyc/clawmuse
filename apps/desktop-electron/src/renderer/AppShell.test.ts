@@ -27,10 +27,27 @@ const state = reactive({
   logs: [],
   stageMounted: true,
   stageWarnings: [] as string[],
+  lastAvatarDirectiveAt: 0,
 })
 
 const speechSynthesisSpeak = vi.fn()
 const speechSynthesisCancel = vi.fn()
+const fetchMock = vi.fn()
+let shellCommandListener: ((event: unknown) => void) | null = null
+
+function emitShellCommand(event: unknown) {
+  shellCommandListener?.(event)
+}
+
+async function openPanelViaShell(wrapper: ReturnType<typeof mount>, panel: 'chat' | 'logs' | 'connection') {
+  emitShellCommand({
+    type: 'open-panel',
+    panel,
+  })
+  await wrapper.vm.$nextTick()
+  await Promise.resolve()
+  await wrapper.vm.$nextTick()
+}
 
 class FakeSpeechRecognition {
   lang = 'zh-CN'
@@ -89,12 +106,15 @@ import App from './App.vue'
 describe('desktop-electron App shell', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fetchMock.mockReset()
+    shellCommandListener = null
     state.subtitles.splice(0)
     state.logs.splice(0)
     state.messages.splice(0)
     state.connected = false
     state.connectionStatus = 'idle'
     state.draftMessage = ''
+    state.lastAvatarDirectiveAt = 0
     window.localStorage.clear()
     connect.mockImplementation(async () => {
       state.connected = true
@@ -112,7 +132,42 @@ describe('desktop-electron App shell', () => {
       version: '0.1.0',
       hostPlatform: 'win32',
       imeCompatMode: true,
+      dragWindowBy: vi.fn(async () => true),
       resizeWindowToAvatar: vi.fn(),
+      startVoiceService: vi.fn(async () => ({
+        state: 'running',
+        adapter: {
+          sttMode: 'owned',
+          ttsMode: 'owned',
+        },
+        upstream: {
+          healthy: false,
+          baseUrl: 'http://127.0.0.1:12393',
+        },
+      })),
+      getVoiceServiceStatus: vi.fn(async () => ({
+        state: 'running',
+        adapter: {
+          sttMode: 'owned',
+          ttsMode: 'owned',
+        },
+        upstream: {
+          healthy: false,
+          baseUrl: 'http://127.0.0.1:12393',
+        },
+      })),
+      stopVoiceService: vi.fn(async () => ({
+        state: 'stopped',
+      })),
+      onVoiceServiceEvent: vi.fn(() => () => {}),
+      onShellCommand: vi.fn((listener: (event: unknown) => void) => {
+        shellCommandListener = listener
+        return () => {
+          if (shellCommandListener === listener) {
+            shellCommandListener = null
+          }
+        }
+      }),
     }
 
     ;(window as any).speechSynthesis = {
@@ -136,49 +191,48 @@ describe('desktop-electron App shell', () => {
         this.text = text
       }
     }
+    ;(globalThis as any).fetch = fetchMock
   })
 
-  it('renders stage and menu toggle by default', async () => {
+  it('renders stage without in-window menu controls by default', async () => {
     const wrapper = mount(App)
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('.avatar-shell__stage').exists()).toBe(true)
-    expect(wrapper.find('[data-action="toggle-controls"]').exists()).toBe(true)
-    expect(window.clawmuse?.resizeWindowToAvatar).toHaveBeenCalledWith({
-      width: 468,
-      height: 748,
-    })
+    expect(wrapper.find('[data-action="toggle-controls"]').exists()).toBe(false)
+    expect(window.clawmuse?.resizeWindowToAvatar).not.toHaveBeenCalled()
   })
 
-  it('routes chat click to connection panel when disconnected', async () => {
+  it('routes tray chat command to connection panel when disconnected', async () => {
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    await wrapper.get('[data-action="chat"]').trigger('click')
+    await openPanelViaShell(wrapper, 'chat')
 
     expect(wrapper.find('[data-panel="connection"]').exists()).toBe(true)
   })
 
-  it('opens connection panel and calls connect', async () => {
+  it('opens connection panel from tray command and calls connect', async () => {
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    await wrapper.get('[data-action="chat"]').trigger('click')
+    await openPanelViaShell(wrapper, 'chat')
     expect(wrapper.find('[data-panel="connection"]').exists()).toBe(true)
 
     await wrapper.get('[data-action="connection-connect"]').trigger('click')
-    expect(connect).toHaveBeenCalledTimes(1)
+    expect(connect).toHaveBeenCalled()
   })
 
-  it('shows chat/logs and motion test controls in menu', async () => {
+  it('handles tray logs and manual motion commands', async () => {
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    expect(wrapper.find('[data-action="chat"]').exists()).toBe(true)
-    expect(wrapper.find('[data-action="logs"]').exists()).toBe(true)
-    expect(wrapper.find('[data-action="manual-motion-tap-body"]').exists()).toBe(true)
-    expect(wrapper.find('[data-action="quick-chat"]').exists()).toBe(false)
-    expect(wrapper.find('[data-action="toggle-interaction-emotion"]').exists()).toBe(true)
+    await openPanelViaShell(wrapper, 'logs')
+    emitShellCommand({
+      type: 'avatar.manual-motion',
+      motion: 'TapBody#0',
+    })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-panel="logs"]').exists()).toBe(true)
+    expect(state.logs.some(line => line.includes('[window] manualMotion=TapBody#0'))).toBe(true)
   })
 
   it('auto connects from cached connection state within 30 days', async () => {
@@ -207,8 +261,7 @@ describe('desktop-electron App shell', () => {
     state.connected = true
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    await wrapper.get('[data-action="chat"]').trigger('click')
+    await openPanelViaShell(wrapper, 'chat')
     await wrapper.get('[data-action="chat-input"]').setValue('你好')
     await wrapper.get('[data-action="chat-send"]').trigger('click')
 
@@ -220,8 +273,7 @@ describe('desktop-electron App shell', () => {
     state.connected = true
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    await wrapper.get('[data-action="chat"]').trigger('click')
+    await openPanelViaShell(wrapper, 'chat')
     const input = wrapper.get('[data-action="chat-input"]')
     await input.setValue('键盘发送')
 
@@ -238,8 +290,7 @@ describe('desktop-electron App shell', () => {
     try {
       const wrapper = mount(App)
 
-      await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-      await wrapper.get('[data-action="chat"]').trigger('click')
+      await openPanelViaShell(wrapper, 'chat')
       const input = wrapper.get('[data-action="chat-input"]')
       await input.setValue('中文输入')
 
@@ -275,8 +326,7 @@ describe('desktop-electron App shell', () => {
     state.connected = true
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    await wrapper.get('[data-action="chat"]').trigger('click')
+    await openPanelViaShell(wrapper, 'chat')
     const input = wrapper.get('[data-action="chat-input"]')
 
     await input.trigger('focus')
@@ -302,6 +352,22 @@ describe('desktop-electron App shell', () => {
     expect(bubble.text()).toContain('这是第一句。')
   })
 
+  it('strips markdown formatting symbols in speech bubble subtitle', async () => {
+    const wrapper = mount(App)
+
+    state.subtitles.push('**你好**，这是`code` [链接](https://example.com) #标题。')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const bubble = wrapper.find('[data-role="speech-bubble"]')
+    expect(bubble.exists()).toBe(true)
+    expect(bubble.text()).toContain('你好，这是code 链接 标题。')
+    expect(bubble.text()).not.toContain('**')
+    expect(bubble.text()).not.toContain('`')
+    expect(bubble.text()).not.toContain('[')
+    expect(bubble.text()).not.toContain(']')
+  })
+
   it('speaks subtitle sentences through speechSynthesis', async () => {
     const wrapper = mount(App)
 
@@ -314,13 +380,213 @@ describe('desktop-electron App shell', () => {
     expect(firstCallArg?.text).toBe('语音播报测试。')
   })
 
+  it('does not over-split a sentence wrapped with quotes and trailing punctuation', async () => {
+    const wrapper = mount(App)
+
+    state.subtitles.push('她说“你好！”。')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(speechSynthesisSpeak).toHaveBeenCalledTimes(1)
+    const firstCallArg = speechSynthesisSpeak.mock.calls[0]?.[0] as { text?: string } | undefined
+    expect(firstCallArg?.text).toBe('她说“你好！”。')
+  })
+
+  it('keeps single-line wraps in one spoken sentence', async () => {
+    const wrapper = mount(App)
+
+    state.subtitles.push(`这是第一行
+继续这一句。`)
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(speechSynthesisSpeak).toHaveBeenCalledTimes(1)
+    const firstCallArg = speechSynthesisSpeak.mock.calls[0]?.[0] as { text?: string } | undefined
+    expect(firstCallArg?.text).toBe('这是第一行 继续这一句。')
+  })
+
+  it('sanitizes noisy symbols before speech output', async () => {
+    const wrapper = mount(App)
+
+    state.subtitles.push('路径是 A/B & C*D。')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(speechSynthesisSpeak).toHaveBeenCalledTimes(1)
+    const firstCallArg = speechSynthesisSpeak.mock.calls[0]?.[0] as { text?: string } | undefined
+    expect(firstCallArg?.text).toBe('路径是。')
+  })
+
+  it('renders thought text in bubble but does not send it to speech synthesis', async () => {
+    const wrapper = mount(App)
+
+    state.subtitles.push('<think>我先整理一下思路</think>')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const bubble = wrapper.find('[data-role="speech-bubble"]')
+    expect(bubble.exists()).toBe(true)
+    expect(bubble.text()).toContain('内心：我先整理一下思路')
+    expect(speechSynthesisSpeak).toHaveBeenCalledTimes(0)
+  })
+
   it('shows voice input toggle in chat panel', async () => {
     state.connected = true
     const wrapper = mount(App)
 
-    await wrapper.get('[data-action="toggle-controls"]').trigger('click')
-    await wrapper.get('[data-action="chat"]').trigger('click')
+    await openPanelViaShell(wrapper, 'chat')
 
     expect(wrapper.find('[data-action="chat-voice-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-action="chat-voice-service-status"]').exists()).toBe(true)
+    expect(wrapper.find('[data-role="chat-settings"]').exists()).toBe(true)
+    expect(wrapper.find('[data-action="chat-voice-toggle"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-role="chat-voice-readiness"]').text()).toContain('上游')
+    expect(wrapper.find('[data-role="chat-voice-service-notice"]').text()).toContain('上游未就绪')
+  })
+
+  it('runs voice diagnostics and writes summary logs', async () => {
+    state.connected = true
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        audioBase64: 'UklGRg==',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        text: '诊断通过',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+
+    const wrapper = mount(App)
+    await openPanelViaShell(wrapper, 'chat')
+    await wrapper.get('[data-action="chat-voice-diagnostics"]').trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(state.logs.some(line => line.includes('[voice] [diag] tts ok:'))).toBe(true)
+    expect(state.logs.some(line => line.includes('[voice] [diag] stt ok:'))).toBe(true)
+    expect(state.logs.some(line => line.includes('[voice] [diag][suggest] TTS: service looks healthy.'))).toBe(true)
+    expect(state.logs.some(line => line.includes('[voice] [diag] voice diagnostics finished: ok'))).toBe(true)
+    expect(wrapper.find('[data-role="chat-voice-diagnostics"]').text()).toContain('Voice diagnostics: all checks passed.')
+    expect(wrapper.find('[data-role="chat-voice-diagnostics-badge"]').text()).toContain('Last diagnostics')
+  })
+
+  it('applies diagnostic quick-fix action to switch TTS engine', async () => {
+    state.connected = true
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        detail: 'bad payload',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        text: '诊断通过',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        audioBase64: 'UklGRg==',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        text: '诊断通过',
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+
+    const wrapper = mount(App)
+    await openPanelViaShell(wrapper, 'chat')
+    await wrapper.get('[data-action="chat-voice-engine-select"]').setValue('http_tts')
+    await wrapper.get('[data-action="chat-voice-diagnostics"]').trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    const fixButton = wrapper.find('[data-action-id="tts-engine-web-speech"]')
+    expect(fixButton.exists()).toBe(true)
+    expect(fixButton.text()).toContain('推荐：')
+    await fixButton.trigger('click')
+    expect(wrapper.find('[data-role="chat-voice-diagnostic-confirm"]').text()).toContain('Change `Engine`')
+    await wrapper.get('[data-action="chat-voice-diagnostic-confirm"]').trigger('click')
+    await new Promise(resolve => setTimeout(resolve, 260))
+
+    const engineSelect = wrapper.get('[data-action="chat-voice-engine-select"]')
+    expect((engineSelect.element as HTMLSelectElement).value).toBe('web_speech')
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(state.logs.some(line => line.includes('[voice] [diag][apply] tts-engine-web-speech'))).toBe(true)
+    expect(state.logs.some(line => line.includes('[voice] [diag][apply] auto-rerun queued reason=tts-engine-web-speech'))).toBe(true)
+    expect(state.logs.some(line => line.includes('[voice] [diag][summary] source=auto reason=tts-engine-web-speech status=ok'))).toBe(true)
+    expect(wrapper.find('[data-role="chat-voice-diagnostics-badge"]').text()).toContain('Recheck')
+  })
+
+  it('shows stt endpoint input by default in integrated mode', async () => {
+    state.connected = true
+    const wrapper = mount(App)
+
+    await openPanelViaShell(wrapper, 'chat')
+    expect(wrapper.find('[data-action="chat-voice-input-endpoint-input"]').exists()).toBe(true)
+  })
+
+  it('shows http tts endpoint input by default in integrated mode', async () => {
+    state.connected = true
+    const wrapper = mount(App)
+
+    await openPanelViaShell(wrapper, 'chat')
+    expect(wrapper.find('[data-action="chat-voice-endpoint-input"]').exists()).toBe(true)
+  })
+
+  it('shows endpoint validation errors for malformed HTTP service URLs', async () => {
+    state.connected = true
+    const wrapper = mount(App)
+
+    await openPanelViaShell(wrapper, 'chat')
+    await wrapper.get('[data-action="chat-voice-input-engine-select"]').setValue('http_stt')
+    await wrapper.get('[data-action="chat-voice-engine-select"]').setValue('http_tts')
+    await wrapper.get('[data-action="chat-voice-input-endpoint-input"]').setValue('not-a-url')
+    await wrapper.get('[data-action="chat-voice-endpoint-input"]').setValue('also-not-a-url')
+
+    expect(wrapper.get('[data-role="chat-voice-input-endpoint-error"]').text()).toContain('STT endpoint is not a valid URL.')
+    expect(wrapper.get('[data-role="chat-voice-endpoint-error"]').text()).toContain('TTS endpoint is not a valid URL.')
+  })
+
+  it('restores cached disabled voice output settings in chat controls', async () => {
+    state.connected = true
+    window.localStorage.setItem('clawmuse:voice-settings:v1', JSON.stringify({
+      outputEnabled: false,
+      presetId: 'clear',
+      updatedAt: Date.now(),
+    }))
+    const wrapper = mount(App)
+
+    await openPanelViaShell(wrapper, 'chat')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('[data-action="chat-voice-output-toggle"]').text()).toContain('开启语音输出')
+    expect(state.logs.some(line => line.includes('[voice] [tts] restored settings stt=web_speech tts=web_speech provider=openllm mode=sft preset=clear output=0'))).toBe(true)
+  })
+
+  it('applies selected voice preset settings to speech synthesis utterance', async () => {
+    state.connected = true
+    const wrapper = mount(App)
+
+    await openPanelViaShell(wrapper, 'chat')
+    await wrapper.get('[data-action="chat-voice-preset-select"]').setValue('loli')
+    speechSynthesisSpeak.mockClear()
+
+    state.subtitles.push('预设生效测试。')
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(speechSynthesisSpeak.mock.calls.length).toBeGreaterThanOrEqual(1)
+    const utterance = speechSynthesisSpeak.mock.calls.at(-1)?.[0] as { pitch?: number, rate?: number, lang?: string } | undefined
+    expect(utterance?.lang).toBe('zh-CN')
+    expect((utterance?.pitch ?? 0)).toBeGreaterThan(1.2)
+    expect((utterance?.rate ?? 0)).toBeGreaterThan(1)
   })
 })

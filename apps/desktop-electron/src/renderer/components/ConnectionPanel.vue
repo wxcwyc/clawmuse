@@ -50,14 +50,16 @@ const emit = defineEmits<{
         >
       </label>
     </div>
-    <button
-      class="connection-panel__button"
-      data-action="connection-connect"
-      type="button"
-      @click="emit('connect')"
-    >
-      Connect
-    </button>
+    <div class="connection-panel__actions">
+      <button
+        class="connection-panel__button"
+        data-action="connection-connect"
+        type="button"
+        @click="emit('connect')"
+      >
+        Connect
+      </button>
+    </div>
   </section>
 </template>
 
@@ -113,6 +115,17 @@ const emit = defineEmits<{
   font: inherit;
 }
 
+.connection-panel__field select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(109, 76, 41, 0.18);
+  border-radius: 14px;
+  padding: 0.82rem 0.95rem;
+  background: rgba(255, 255, 255, 0.92);
+  color: #281d12;
+  font: inherit;
+}
+
 .connection-panel__button {
   border: 0;
   border-radius: 999px;
@@ -122,5 +135,11 @@ const emit = defineEmits<{
   font: inherit;
   font-weight: 700;
   cursor: pointer;
+}
+
+.connection-panel__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 </style>

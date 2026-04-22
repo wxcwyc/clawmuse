@@ -177,4 +177,62 @@ describe('DesktopShellRuntime', () => {
       'assistant.completed',
     ])
   })
+
+  it('passes server emotion/action hints through orchestrator to avatar runtime', async () => {
+    const transport = createTransport()
+    const adapter = new OpenClawGatewayChatAdapter(transport)
+    const avatarRuntime = {
+      consume: vi.fn(async () => {}),
+    }
+    const runtime = new DesktopShellRuntime({
+      adapter,
+      orchestrator: new SessionOrchestrator({ voiceId: 'voice-1' }),
+      speechRuntime: {
+        enqueue: vi.fn(async () => []),
+      },
+      avatarRuntime,
+    })
+
+    await runtime.sendUserMessage({
+      sessionKey: 'main',
+      runId: 'run-hints-rt-1',
+      message: '你好',
+    })
+
+    await runtime.handleGatewayEvent({
+      event: 'chat',
+      payload: {
+        runId: 'run-hints-rt-1',
+        sessionKey: 'main',
+        seq: 1,
+        state: 'delta',
+        message: {
+          role: 'assistant',
+          timestamp: 100,
+          content: [{ type: 'text', text: '服务端提示动作。' }],
+          emotion: 'excited',
+          emotionIntensity: 0.88,
+          emotionReason: 'gateway-hint',
+          action: {
+            motion: 'bright-bounce',
+            priority: 3,
+            durationMs: 1400,
+          },
+        },
+      },
+    })
+
+    expect(avatarRuntime.consume).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      type: 'assistant.emotion',
+      emotion: 'excited',
+      intensity: 0.88,
+      reason: 'gateway-hint',
+    }))
+    expect(avatarRuntime.consume).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      type: 'assistant.motion',
+      motion: 'bright-bounce',
+      priority: 3,
+      durationMs: 1400,
+    }))
+  })
 })

@@ -4,22 +4,29 @@
   "version": "0.1.0",
   "type": "module",
   "main": "out/main/index.js",
-  "description": "Avatar runtime shell for OpenClaw companion experiences",
-  "license": "UNLICENSED",
+  "description": "Desktop avatar runtime that turns OpenClaw replies into voice, subtitles, lip sync, and expressions",
+  "license": "MIT",
   "packageManager": "pnpm@10.17.1",
   "scripts": {
     "dev": "echo \"Use pnpm dev:desktop-electron or pnpm demo:headless\"",
     "dev:desktop-electron": "electron-vite dev --config apps/desktop-electron/electron.vite.config.ts",
     "build:desktop-electron": "electron-vite build --config apps/desktop-electron/electron.vite.config.ts",
+    "voice:prepare-offline-assets": "bash scripts/prepare-voice-offline-assets.sh",
+    "pack:win-unpacked": "bash scripts/pack-win-unpacked.sh",
+    "pack:win-unpacked:offline": "bash scripts/pack-win-unpacked-offline.sh",
+    "pack:win-installer": "echo \"Not configured in this branch. Use pack:win-unpacked.\" && exit 1",
     "demo:headless": "tsx apps/desktop-shell/src/headless-main.ts",
+    "guard:connection": "bash scripts/guard-connection.sh",
     "build": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@electron/packager": "^19.1.0",
     "@types/node": "^24.6.1",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/test-utils": "^2.4.6",
     "electron": "40.8.0",
+    "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.0",
     "jsdom": "^29.0.1",
     "tsx": "^4.21.0",
@@ -41,6 +48,34 @@
     "@pixi/sprite": "6.5.10",
     "@pixi/ticker": "^6.5.10",
     "@pixi/utils": "6.5.10",
-    "pixi-live2d-display": "^0.4.0"
+    "pixi-live2d-display": "^0.4.0",
+    "ws": "^8.20.0"
+  },
+  "build": {
+    "appId": "com.clawmuse.desktop",
+    "productName": "ClawMuseDiag",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**",
+      "package.json",
+      "README.md"
+    ],
+    "extraMetadata": {
+      "main": "out/main/index.js"
+    },
+    "asar": true,
+    "win": {
+      "target": [
+        "dir",
+        "nsis"
+      ],
+      "artifactName": "${productName} ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

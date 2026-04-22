@@ -1,4 +1,5 @@
 import type {
+  AssistantHintFields,
   AssistantEmotionEvent,
   AssistantMotionEvent,
   AssistantSegmentEvent,
@@ -71,6 +72,62 @@ function resolveMotion(emotion: EmotionDescriptor): MotionDescriptor {
   }
 }
 
+const emotionAliasMap: Record<string, AssistantEmotionEvent['emotion']> = {
+  neutral: 'neutral',
+  calm: 'neutral',
+  idle: 'neutral',
+  happy: 'happy',
+  joy: 'happy',
+  cheerful: 'happy',
+  glad: 'happy',
+  shy: 'shy',
+  blush: 'shy',
+  sad: 'sad',
+  upset: 'sad',
+  excited: 'excited',
+  energetic: 'excited',
+  thinking: 'thinking',
+  think: 'thinking',
+  thoughtful: 'thinking',
+}
+
+function normalizeEmotionName(rawEmotion: string): AssistantEmotionEvent['emotion'] | null {
+  const normalized = rawEmotion.trim().toLowerCase()
+  if (!normalized) {
+    return null
+  }
+  return emotionAliasMap[normalized] ?? null
+}
+
+function resolveHintedEmotion(hints?: AssistantHintFields): EmotionDescriptor | null {
+  if (!hints?.emotion) {
+    return null
+  }
+
+  const normalizedEmotion = normalizeEmotionName(hints.emotion)
+  if (!normalizedEmotion) {
+    return null
+  }
+
+  return {
+    emotion: normalizedEmotion,
+    intensity: Math.min(1, Math.max(0, hints.emotionIntensity ?? 0.65)),
+    reason: hints.emotionReason || 'gateway-hint',
+  }
+}
+
+function resolveHintedMotion(hints?: AssistantHintFields): MotionDescriptor | null {
+  if (!hints?.action || !hints.action.trim()) {
+    return null
+  }
+
+  return {
+    motion: hints.action.trim(),
+    priority: hints.actionPriority,
+    durationMs: hints.actionDurationMs,
+  }
+}
+
 function findFallbackBoundary(text: string, threshold: number): number | null {
   if (text.length < threshold) {
     return null
@@ -106,10 +163,18 @@ export class SessionOrchestrator {
         return []
 
       case 'assistant.delta':
-        return this.consumeText(event.runId, event.sessionKey, event.text, event.ts, false)
+        return this.consumeText(event.runId, event.sessionKey, event.text, event.ts, false, undefined, event)
 
       case 'assistant.completed': {
-        const output = this.consumeText(event.runId, event.sessionKey, '', event.ts, true, event.finalText)
+        const output = this.consumeText(
+          event.runId,
+          event.sessionKey,
+          '',
+          event.ts,
+          true,
+          event.finalText,
+          event,
+        )
         this.runs.delete(event.runId)
         return output
       }
@@ -134,6 +199,7 @@ export class SessionOrchestrator {
     ts: number,
     flushFinal: boolean,
     finalText?: string,
+    hints?: AssistantHintFields,
   ): SessionOrchestratorOutputEvent[] {
     const state = this.ensureRun(runId)
 
@@ -184,6 +250,7 @@ export class SessionOrchestrator {
         finalInSentence,
         ts,
         state,
+        hints,
       }))
     }
 
@@ -199,6 +266,7 @@ export class SessionOrchestrator {
           finalInSentence: true,
           ts,
           state,
+          hints,
         }))
       }
     }
@@ -213,11 +281,12 @@ export class SessionOrchestrator {
     finalInSentence: boolean
     ts: number
     state: RunState
+    hints?: AssistantHintFields
   }): [AssistantSegmentEvent, AssistantEmotionEvent, AssistantMotionEvent, TtsChunkEvent] {
     params.state.segmentCount += 1
     const segmentId = `${params.runId}:${params.state.segmentCount}`
-    const emotion = classifyEmotion(params.text)
-    const motion = resolveMotion(emotion)
+    const emotion = resolveHintedEmotion(params.hints) ?? classifyEmotion(params.text)
+    const motion = resolveHintedMotion(params.hints) ?? resolveMotion(emotion)
 
     return [
       {

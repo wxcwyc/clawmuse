@@ -1,6 +1,8 @@
 import type { DesktopShellRuntimeEvent } from '../../../desktop-shell/src/types'
 import { reactive } from 'vue'
 import { inspectLive2DStage } from './stage-preflight'
+import { resolveLive2DModelSource } from '../../../../packages/live2d-driver/src/asset-resolver'
+import { resolveCubismRuntimeScriptSrc } from './cubism-runtime'
 
 export interface DesktopRendererChatMessage {
   id: string
@@ -33,6 +35,14 @@ export interface DesktopRendererModelOptions {
   inspectStage?(params: {
     modelSource: string
   }): Promise<string[]>
+  transformOutboundMessage?(params: {
+    sessionKey: string
+    runId: string
+    message: string
+  }): {
+    message: string
+    debugLabel?: string
+  }
 }
 
 export interface DesktopRendererState {
@@ -51,6 +61,7 @@ export interface DesktopRendererState {
   logs: string[]
   stageMounted: boolean
   stageWarnings: string[]
+  lastAvatarDirectiveAt: number
 }
 
 type ConnectionField = keyof DesktopRendererState['connection']
@@ -129,6 +140,7 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
     logs: [],
     stageMounted: false,
     stageWarnings: [],
+    lastAvatarDirectiveAt: 0,
   })
 
   let session: DesktopElectronSession | null = null
@@ -137,6 +149,7 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
   const committedAssistantRuns = new Set<string>()
   const completedRuns = new Set<string>()
   const consumedSegmentIds = new Set<string>()
+  let transformOutboundMessage = options.transformOutboundMessage
 
   function appendLog(line: string) {
     state.logs.push(line)
@@ -155,6 +168,16 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
     if (!params?.modelSource) {
       return
     }
+
+    const resolvedModelSource = params.modelSource.startsWith('assets://')
+      ? resolveLive2DModelSource(params.modelSource)
+      : params.modelSource
+    const runtimeLocation = typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.host}${window.location.pathname}`
+      : 'non-browser'
+    appendLog(
+      `[stage] diag-v2 core=${resolveCubismRuntimeScriptSrc()} model=${resolvedModelSource} location=${runtimeLocation}`,
+    )
 
     const warnings = await (options.inspectStage?.({
       modelSource: params.modelSource,
@@ -181,6 +204,7 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
       state.connected = false
       state.connectionStatus = 'idle'
       state.liveAssistantText = ''
+      state.lastAvatarDirectiveAt = 0
       liveRunId = null
       consumedSegmentIds.clear()
       completedRuns.clear()
@@ -202,20 +226,29 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
         state.connection.url = normalized.url
       }
 
-      if (!session) {
-        session = options.createSession({
-          url: state.connection.url,
-          token: state.connection.token,
-          password: state.connection.password,
-          sessionKey: state.connection.sessionKey,
-          onEvent: (event) => {
-            this.handleRuntimeEvent(event)
-          },
-        })
-      }
-
       appendLog(`[session] connecting to ${state.connection.url} (session=${state.connection.sessionKey})`)
       state.connectionStatus = 'connecting'
+
+      if (!session) {
+        try {
+          session = options.createSession({
+            url: state.connection.url,
+            token: state.connection.token,
+            password: state.connection.password,
+            sessionKey: state.connection.sessionKey,
+            onEvent: (event) => {
+              this.handleRuntimeEvent(event)
+            },
+          })
+        }
+        catch (error) {
+          const reason = stringifyError(error)
+          appendLog(`[session] connect failed: ${reason}`)
+          state.connected = false
+          state.connectionStatus = 'error'
+          throw error
+        }
+      }
 
       try {
         await session.start()
@@ -242,9 +275,30 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
         throw new Error('Session is not connected')
       }
 
-      const message = state.draftMessage.trim()
-      if (!message) {
+      const userMessage = state.draftMessage.trim()
+      if (!userMessage) {
         return
+      }
+
+      let outboundMessage = userMessage
+      if (transformOutboundMessage) {
+        try {
+          const transformed = transformOutboundMessage({
+            sessionKey: state.connection.sessionKey,
+            runId: params.runId,
+            message: userMessage,
+          })
+          const transformedMessage = transformed?.message?.trim()
+          if (transformedMessage) {
+            outboundMessage = transformedMessage
+          }
+          if (transformed?.debugLabel) {
+            appendLog(`[session] outbound transform=${transformed.debugLabel}`)
+          }
+        }
+        catch (error) {
+          appendLog(`[session] outbound transform failed: ${stringifyError(error)}`)
+        }
       }
 
       appendLog(`[session] sending message (run=${params.runId}, session=${state.connection.sessionKey})`)
@@ -253,7 +307,7 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
         await session.sendUserMessage({
           sessionKey: state.connection.sessionKey,
           runId: params.runId,
-          message,
+          message: outboundMessage,
         })
       }
       catch (error) {
@@ -261,17 +315,22 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
         state.connectionStatus = 'error'
         throw error
       }
-      appendLog(`[user] ${message}`)
+      appendLog(`[user] ${userMessage}`)
       appendMessage({
         id: `${params.runId}:user`,
         role: 'user',
-        text: message,
+        text: userMessage,
         session: state.connection.sessionKey,
         createdAt: Date.now(),
         source: 'clawmuse-desktop-shell',
         final: true,
       })
       state.draftMessage = ''
+    },
+    setOutboundMessageTransform(
+      transform?: DesktopRendererModelOptions['transformOutboundMessage'],
+    ) {
+      transformOutboundMessage = transform
     },
     handleRuntimeEvent(event: DesktopShellRuntimeEvent) {
       if (event.type === 'session.started') {
@@ -354,6 +413,18 @@ export function createDesktopRendererModel(options: DesktopRendererModelOptions)
         if (liveRunId === event.runId) {
           liveRunId = null
         }
+        return
+      }
+
+      if (event.type === 'assistant.emotion') {
+        state.lastAvatarDirectiveAt = event.ts || Date.now()
+        appendLog(`[assistant:emotion] run=${event.runId} emotion=${event.emotion} intensity=${event.intensity.toFixed(2)}`)
+        return
+      }
+
+      if (event.type === 'assistant.motion') {
+        state.lastAvatarDirectiveAt = event.ts || Date.now()
+        appendLog(`[assistant:motion] run=${event.runId} motion=${event.motion} priority=${event.priority ?? 0}`)
         return
       }
 

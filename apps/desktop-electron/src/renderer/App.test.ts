@@ -165,6 +165,41 @@ describe('desktop-electron renderer model', () => {
     expect(model.state.logs).toContain('[assistant:error] OpenClaw chat run failed')
   })
 
+  it('records assistant emotion/motion directives for renderer-side fallback coordination', () => {
+    const session = {
+      start: vi.fn(async () => {}),
+      stop: vi.fn(),
+      sendUserMessage: vi.fn(async () => []),
+    }
+
+    const model = createDesktopRendererModel({
+      createSession: () => session,
+    })
+
+    model.handleRuntimeEvent({
+      type: 'assistant.emotion',
+      sessionKey: 'main',
+      runId: 'run-emo-1',
+      emotion: 'excited',
+      intensity: 0.92,
+      reason: 'gateway-hint',
+      ts: 1234,
+    })
+    model.handleRuntimeEvent({
+      type: 'assistant.motion',
+      sessionKey: 'main',
+      runId: 'run-emo-1',
+      motion: 'bright-bounce',
+      priority: 2,
+      durationMs: 1500,
+      ts: 1235,
+    })
+
+    expect(model.state.lastAvatarDirectiveAt).toBe(1235)
+    expect(model.state.logs).toContain('[assistant:emotion] run=run-emo-1 emotion=excited intensity=0.92')
+    expect(model.state.logs).toContain('[assistant:motion] run=run-emo-1 motion=bright-bounce priority=2')
+  })
+
   it('does not duplicate subtitle lines when completed is followed by a segmented flush', () => {
     const session = {
       start: vi.fn(async () => {}),
@@ -295,8 +330,8 @@ describe('desktop-electron renderer model', () => {
       sendUserMessage: vi.fn(async () => []),
     }
     const inspectStage = vi.fn(async () => [
-      '[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js',
-      '[stage] missing Live2D model asset at /live2d/builtin-hiyori/Hiyori.model3.json',
+      '[stage] missing Live2D Cubism Core at ./live2d-core/live2dcubismcore.min.js',
+      '[stage] missing Live2D model asset at ./live2d/builtin-hiyori/Hiyori.model3.json',
     ])
 
     const model = createDesktopRendererModel({
@@ -310,11 +345,11 @@ describe('desktop-electron renderer model', () => {
 
     expect(model.state.stageMounted).toBe(true)
     expect(model.state.stageWarnings).toEqual([
-      '[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js',
-      '[stage] missing Live2D model asset at /live2d/builtin-hiyori/Hiyori.model3.json',
+      '[stage] missing Live2D Cubism Core at ./live2d-core/live2dcubismcore.min.js',
+      '[stage] missing Live2D model asset at ./live2d/builtin-hiyori/Hiyori.model3.json',
     ])
-    expect(model.state.logs).toContain('[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js')
-    expect(model.state.logs).toContain('[stage] missing Live2D model asset at /live2d/builtin-hiyori/Hiyori.model3.json')
+    expect(model.state.logs).toContain('[stage] missing Live2D Cubism Core at ./live2d-core/live2dcubismcore.min.js')
+    expect(model.state.logs).toContain('[stage] missing Live2D model asset at ./live2d/builtin-hiyori/Hiyori.model3.json')
   })
 
   it('can refresh stage warnings and clear them after assets become available', async () => {
@@ -326,7 +361,7 @@ describe('desktop-electron renderer model', () => {
     const inspectStage = vi
       .fn()
       .mockResolvedValueOnce([
-        '[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js',
+        '[stage] missing Live2D Cubism Core at ./live2d-core/live2dcubismcore.min.js',
       ])
       .mockResolvedValueOnce([])
 
@@ -340,7 +375,7 @@ describe('desktop-electron renderer model', () => {
     })
 
     expect(model.state.stageWarnings).toEqual([
-      '[stage] missing Live2D Cubism Core at /live2d-core/live2dcubismcore.min.js',
+      '[stage] missing Live2D Cubism Core at ./live2d-core/live2dcubismcore.min.js',
     ])
 
     await model.refreshStageWarnings({
