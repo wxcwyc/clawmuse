@@ -4,3 +4,7 @@ build/
 out/
 .env
 *.log
+apps/desktop-electron/src/renderer/public/live2d/*
+!apps/desktop-electron/src/renderer/public/live2d/README.md
+!apps/desktop-electron/src/renderer/public/live2d/builtin-hiyori/
+!apps/desktop-electron/src/renderer/public/live2d/builtin-hiyori/**
